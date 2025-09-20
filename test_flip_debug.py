@@ -11,38 +11,35 @@ import json
 def test_flip_release():
     print("🧮 TESTING FLIP RELEASE CREATION")
     
-    # Release configuration with flip transformation
+    # Release configuration with flip transformation (NEW API FORMAT)
     release_config = {
-        "project_id": 1,
         "version_name": "v1.0",
-        "dataset_ids": ["1c62d270-2df3-4568-986d-0cff06cd7e7d"],
-        "name": "flip-debug-test-2",
-        "description": "Debug test for flip transformations",
-        "train_split": 0.7,
-        "val_split": 0.2,
-        "test_split": 0.1,
-        "output_format": "yolo",
-        "task_type": "detection",
-        "augmentation_config": {
-            "enabled": True,
-            "num_augmentations_per_image": 1,
-            "transformations": {
-                "flip": {
-                    "enabled": True,
+        "dataset_ids": ["6ec272ad-f769-4b77-9feb-07a7f6ddc4f8"],  # animal dataset
+        "description": "Debug test for flip transformations with animal dataset",
+        "transformations": [
+            {
+                "type": "flip",
+                "params": {
                     "vertical": True
-                },
-                "resize": {
-                    "enabled": True,
-                    "width": 500,
-                    "height": 500
+                }
+            },
+            {
+                "type": "resize", 
+                "params": {
+                    "width": 640,
+                    "height": 640
                 }
             }
-        }
+        ],
+        "multiplier": 2,  # 1 original + 1 augmented = 2 total per image
+        "export_format": "YOLO",
+        "task_type": "object_detection"
     }
     
     print(f"📊 Release config:")
-    print(f"   Transformations: {list(release_config['augmentation_config']['transformations'].keys())}")
-    print(f"   Flip vertical: {release_config['augmentation_config']['transformations']['flip']['vertical']}")
+    print(f"   Transformations: {[t['type'] for t in release_config['transformations']]}")
+    print(f"   Multiplier: {release_config['multiplier']}")
+    print(f"   Flip vertical: {release_config['transformations'][0]['params']['vertical']}")
     
     # Create release
     try:
