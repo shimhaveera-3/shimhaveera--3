@@ -2961,7 +2961,8 @@ def create_complete_release_zip(
                                     img_h=img_h,
                                     transform_config=transform_config,
                                     original_dims=original_dims,
-                                    class_index_resolver=resolve_class_index
+                                    class_index_resolver=resolve_class_index,
+                                    label_mode=label_mode
                                 )
                                 label_content = "\n".join(yolo_lines)
                                 print(f"✅ NEW DETECTION FUNCTION RESULT: {len(yolo_lines)} lines")
@@ -2973,7 +2974,8 @@ def create_complete_release_zip(
                                     img_h=img_h,
                                     transform_config=transform_config,
                                     original_dims=original_dims,
-                                    class_index_resolver=resolve_class_index
+                                    class_index_resolver=resolve_class_index,
+                                    label_mode=label_mode
                                 )
                                 label_content = "\n".join(yolo_lines)
                                 print(f"✅ NEW SEGMENTATION FUNCTION RESULT: {len(yolo_lines)} lines")
@@ -3006,85 +3008,36 @@ def create_complete_release_zip(
                             if len(img_data["annotations"]) > 3:
                                 print(f"   ... and {len(img_data['annotations']) - 3} more")
                             
-                            if label_mode == "yolo_detection":
-                                # 🔍 STEP 13a: Using NEW YOLO detection function with debug logging
-                                print(f"\n=== ✅ USING NEW YOLO FUNCTION :: {img_data.get('filename', 'unknown')} ===")
-                                print(f"Label mode: {label_mode}")
-                                print(f"Using transform_detection_annotations_to_yolo() - NEW FUNCTION")
-                                
-                                from core.annotation_transformer import transform_detection_annotations_to_yolo
-                                yolo_lines = transform_detection_annotations_to_yolo(
-                                    annotations=img_data["annotations"],
-                                    img_w=img_w,
-                                    img_h=img_h,
-                                    transform_config=None,
-                                    class_index_resolver=resolve_class_index
-                                )
-                                label_content = "\n".join(yolo_lines)
-                                
-                                # 🔍 DEBUG: Show NEW function result
-                                print(f"✅ NEW DETECTION FUNCTION RESULT: {len(yolo_lines)} lines")
-                                if yolo_lines:
-                                    print(f"   First line: {yolo_lines[0]}")
-                                    if len(yolo_lines) > 1:
-                                        print(f"   Last line: {yolo_lines[-1]}")
-                                else:
-                                    print(f"   ❌ EMPTY RESULT!")
-                                
-                            elif label_mode == "yolo_segmentation":
-                                # 🔍 STEP 13b: Using NEW YOLO segmentation function with debug logging
-                                print(f"\n=== ✅ USING NEW YOLO FUNCTION :: {img_data.get('filename', 'unknown')} ===")
-                                print(f"Label mode: {label_mode}")
-                                print(f"Using transform_segmentation_annotations_to_yolo() - NEW FUNCTION")
-                                
+                            # 🔍 DEBUG: USING NEW YOLO FUNCTIONS FROM annotation_transformer.py WITH TRANSFORMATIONS
+                            print(f"\n=== ✅ USING NEW YOLO FUNCTIONS :: {img_data.get('filename', 'unknown')} ===")
+                            print(f"Label mode: {label_mode}")
+                            print(f"Using NEW functions from annotation_transformer.py with proper transformations")
+                            
+                            # Use NEW functions from annotation_transformer.py with proper transformation config
+                            if label_mode == "yolo_segmentation":
                                 from core.annotation_transformer import transform_segmentation_annotations_to_yolo
                                 yolo_lines = transform_segmentation_annotations_to_yolo(
                                     annotations=img_data["annotations"],
                                     img_w=img_w,
                                     img_h=img_h,
-                                    transform_config=None,
-                                    class_index_resolver=resolve_class_index
+                                    transform_config=transformation_tracking_data.get("transformation_config") if transformation_tracking_data else None,
+                                    class_index_resolver=resolve_class_index,
+                                    label_mode=label_mode
                                 )
                                 label_content = "\n".join(yolo_lines)
-                                
-                                # 🔍 DEBUG: Show NEW function result
                                 print(f"✅ NEW SEGMENTATION FUNCTION RESULT: {len(yolo_lines)} lines")
-                                if yolo_lines:
-                                    print(f"   First line: {yolo_lines[0]}")
-                                    if len(yolo_lines) > 1:
-                                        print(f"   Last line: {yolo_lines[-1]}")
-                                else:
-                                    print(f"   ❌ EMPTY RESULT!")
-                                
                             else:
-                                # 🔍 DEBUG: USING NEW YOLO FUNCTIONS FROM annotation_transformer.py
-                                print(f"\n=== ✅ USING NEW YOLO FUNCTIONS :: {img_data.get('filename', 'unknown')} ===")
-                                print(f"Label mode: {label_mode}")
-                                print(f"Using NEW functions from annotation_transformer.py")
-                                
-                                # Use NEW functions from annotation_transformer.py
-                                if label_mode == "yolo_segmentation":
-                                    from core.annotation_transformer import transform_segmentation_annotations_to_yolo
-                                    yolo_lines = transform_segmentation_annotations_to_yolo(
-                                        annotations=img_data["annotations"],
-                                        img_w=img_w,
-                                        img_h=img_h,
-                                        transform_config=transformation_tracking_data.get("transformation_config") if transformation_tracking_data else None,
-                                        class_index_resolver=resolve_class_index
-                                    )
-                                    label_content = "\n".join(yolo_lines)
-                                    print(f"✅ NEW SEGMENTATION FUNCTION RESULT: {len(yolo_lines)} lines")
-                                else:
-                                    from core.annotation_transformer import transform_detection_annotations_to_yolo
-                                    yolo_lines = transform_detection_annotations_to_yolo(
-                                        annotations=img_data["annotations"],
-                                        img_w=img_w,
-                                        img_h=img_h,
-                                        transform_config=transformation_tracking_data.get("transformation_config") if transformation_tracking_data else None,
-                                        class_index_resolver=resolve_class_index
-                                    )
-                                    label_content = "\n".join(yolo_lines)
-                                    print(f"✅ NEW DETECTION FUNCTION RESULT: {len(yolo_lines)} lines")
+                                from core.annotation_transformer import transform_detection_annotations_to_yolo
+                                yolo_lines = transform_detection_annotations_to_yolo(
+                                    annotations=img_data["annotations"],
+                                    img_w=img_w,
+                                    img_h=img_h,
+                                    transform_config=transformation_tracking_data.get("transformation_config") if transformation_tracking_data else None,
+                                    class_index_resolver=resolve_class_index,
+                                    label_mode=label_mode
+                                )
+                                label_content = "\n".join(yolo_lines)
+                                print(f"✅ NEW DETECTION FUNCTION RESULT: {len(yolo_lines)} lines")
                             
                             # 🔍 STEP 13c: Comprehensive debug output for label file generation
                             print(f"📝 WRITING TO LABEL FILE: {label_path}")
@@ -3123,7 +3076,8 @@ def create_complete_release_zip(
                                     img_w=img_w,
                                     img_h=img_h,
                                     transform_config=None,
-                                    class_index_resolver=resolve_class_index
+                                    class_index_resolver=resolve_class_index,
+                                    label_mode=label_mode
                                 )
                                 label_content = "\n".join(yolo_lines)
                             elif label_mode == "yolo_segmentation":
@@ -3133,7 +3087,8 @@ def create_complete_release_zip(
                                     img_w=img_w,
                                     img_h=img_h,
                                     transform_config=None,
-                                    class_index_resolver=resolve_class_index
+                                    class_index_resolver=resolve_class_index,
+                                    label_mode=label_mode
                                 )
                                 label_content = "\n".join(yolo_lines)
                             else:
@@ -3423,7 +3378,8 @@ def create_complete_release_zip(
                                                 img_w=img_w,
                                                 img_h=img_h,
                                                 transform_config=None,
-                                                class_index_resolver=resolve_class_index
+                                                class_index_resolver=resolve_class_index,
+                                                label_mode=label_mode
                                             )
                                             fallback_content = "\n".join(yolo_lines)
                                         elif label_mode == "yolo_segmentation":
@@ -3433,7 +3389,8 @@ def create_complete_release_zip(
                                                 img_w=img_w,
                                                 img_h=img_h,
                                                 transform_config=None,
-                                                class_index_resolver=resolve_class_index
+                                                class_index_resolver=resolve_class_index,
+                                                label_mode=label_mode
                                             )
                                             fallback_content = "\n".join(yolo_lines)
                                         else:
@@ -3447,7 +3404,8 @@ def create_complete_release_zip(
                                                         img_w=img_w,
                                                         img_h=img_h,
                                                         transform_config=None,
-                                                        class_index_resolver=resolve_class_index
+                                                        class_index_resolver=resolve_class_index,
+                                                        label_mode=label_mode
                                                     )
                                                     fallback_content = "\n".join(yolo_lines)
                                                 elif label_mode == "yolo_segmentation":
@@ -3457,7 +3415,8 @@ def create_complete_release_zip(
                                                         img_w=img_w,
                                                         img_h=img_h,
                                                         transform_config=None,
-                                                        class_index_resolver=resolve_class_index
+                                                        class_index_resolver=resolve_class_index,
+                                                        label_mode=label_mode
                                                     )
                                                     fallback_content = "\n".join(yolo_lines)
                                                 else:

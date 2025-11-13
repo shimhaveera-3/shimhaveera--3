@@ -219,8 +219,7 @@ def update_annotations_for_transformations(
     original_dims: Tuple[int, int],
     new_dims: Tuple[int, int],
     affine_matrix: Optional[Union[List[float], List[List[float]], np.ndarray]] = None,
-    debug_tracking: bool = False,
-    label_mode: str = "yolo_detection"
+    debug_tracking: bool = False
 ) -> Union[List[Union[BoundingBox, Polygon]], Tuple[List[Union[BoundingBox, Polygon]], Dict]]:
 
     """
@@ -245,14 +244,7 @@ def update_annotations_for_transformations(
         List of updated annotations (invalid ones are dropped).
         If debug_tracking=True, returns (annotations, debug_info) tuple.
     """
-    print(f"\n🔄 UPDATE_ANNOTATIONS_FOR_TRANSFORMATIONS CALLED!")
-    print(f"   📊 Input: {len(annotations)} annotations")
-    print(f"   📐 Dimensions: {original_dims} → {new_dims}")
-    print(f"   🔧 Transform config: {transformation_config}")
-    print(f"   🎯 Has affine matrix: {affine_matrix is not None}")
-    
     if not annotations:
-        print(f"   ⚠️  No annotations to transform!")
         if debug_tracking:
             return [], {}
         return []
@@ -278,26 +270,15 @@ def update_annotations_for_transformations(
             th = int(rz.get('height', new_dims[1]))
             ow, oh = map(float, original_dims)
 
-            print(f"   🎯 RESIZE MODE: {mode}")
-            print(f"   📏 Target size: {tw}x{th}")
-            print(f"   📏 Original size: {ow}x{oh}")
-            
             if mode == 'fit_within':
                 s = min(float(tw)/ow, float(th)/oh)
                 # IMPORTANT: use the same rounding your image pipeline uses for canvas
                 cw = int(round(ow * s))
                 ch = int(round(oh * s))
                 final_dims = (cw, ch)
-                print(f"   📐 FIT_WITHIN: scale={s:.4f}, final_canvas={cw}x{ch}")
-            elif mode == 'fit_black_edges':
-                # fit_black_edges is like letterbox - uniform scale with padding
-                s = min(float(tw)/ow, float(th)/oh)
-                final_dims = (tw, th)  # Canvas is target size with black padding
-                print(f"   📐 FIT_BLACK_EDGES: scale={s:.4f}, final_canvas={tw}x{th}")
             else:
                 # stretch_to, fill_center_crop, fit_*_edges → canvas is target
                 final_dims = (tw, th)
-                print(f"   📐 {mode.upper()}: final_canvas={tw}x{th}")
     except Exception as e:
         logger.warning("errors.validation", f"Could not resolve final canvas dims: {e}",
                        "final_canvas_resolve_failed", {"original_dims": original_dims, "new_dims": new_dims})
@@ -312,15 +293,11 @@ def update_annotations_for_transformations(
         'annotation_steps': []
     } if debug_tracking else None
 
-    print(f"   🎯 FINAL CANVAS DIMENSIONS: {final_dims}")
-    
     # --- Matrix-based precise path ---
     if affine_matrix is not None:
-        print(f"   🔧 USING MATRIX-BASED TRANSFORMATION PATH")
         try:
             # normalize to 3x3 np.ndarray
             A = np.array(affine_matrix, dtype=float).reshape(3, 3)
-            print(f"   📊 Affine matrix shape: {A.shape}")
         except Exception as e:
             logger.error("errors.validation", f"Bad affine_matrix shape/value: {str(e)}; falling back to legacy path",
                          "affine_matrix_invalid", {})
@@ -366,11 +343,7 @@ def update_annotations_for_transformations(
             return updated_annotations
 
     # --- Legacy fallback (sequential config order) ---
-    print(f"   🔧 USING LEGACY/SEQUENTIAL TRANSFORMATION PATH")
-    print(f"   📊 Processing {len(annotations)} annotations individually")
-    
     for ann_idx, annotation in enumerate(annotations):
-        print(f"   🔄 Processing annotation {ann_idx + 1}/{len(annotations)}: {getattr(annotation, 'class_name', 'unknown')}")
         try:
             if debug_tracking:
                 updated_annotation, ann_debug = _transform_single_annotation_with_debug(
@@ -379,7 +352,7 @@ def update_annotations_for_transformations(
                 debug_info['annotation_steps'].append(ann_debug)
             else:
                 updated_annotation = _transform_single_annotation(
-                    annotation, transformation_config, original_dims, final_dims, label_mode  # << use final
+                    annotation, transformation_config, original_dims, final_dims  # << use final
                 )
             
             if updated_annotation:
@@ -422,244 +395,13 @@ def update_annotations_for_transformations(
 def _transform_single_annotation(annotation: Union[BoundingBox, Polygon],
                                  transformation_config: Dict[str, Any],
                                  original_dims: Tuple[int, int],
-                                 new_dims: Tuple[int, int],
-                                 label_mode: str = "yolo_detection") -> Optional[Union[BoundingBox, Polygon]]:
+                                 new_dims: Tuple[int, int]) -> Optional[Union[BoundingBox, Polygon]]:
     """Legacy path: transform a single annotation using old method with sequential order."""
-    print(f"      🎯 _TRANSFORM_SINGLE_ANNOTATION called")
-    print(f"         📦 Annotation type: {type(annotation).__name__}")
-    print(f"         📦 Annotation full type: {type(annotation)}")
-    print(f"         📦 Class: {getattr(annotation, 'class_name', 'unknown')}")
-    if hasattr(annotation, 'x_min'):
-        print(f"         📦 Input bbox: x_min={annotation.x_min}, y_min={annotation.y_min}, x_max={annotation.x_max}, y_max={annotation.y_max}")
-    print(f"         📐 Dimensions: {original_dims} → {new_dims}")
-    
-    print(f"         🔍 isinstance(annotation, BoundingBox): {isinstance(annotation, BoundingBox)}")
-    print(f"         🔍 BoundingBox type: {BoundingBox}")
-    
     if isinstance(annotation, BoundingBox):
-        print(f"         🔧 About to call _transform_bbox...")
-        result = _transform_bbox(annotation, transformation_config, original_dims, new_dims)
-        print(f"         🔧 _transform_bbox returned: {result}")
-        if result and hasattr(result, 'x_min'):
-            print(f"         📦 Output bbox: x_min={result.x_min}, y_min={result.y_min}, x_max={result.x_max}, y_max={result.y_max}")
-        else:
-            print(f"         ⚠️  _transform_bbox returned None or invalid result!")
-        return result
+        return _transform_bbox(annotation, transformation_config, original_dims, new_dims)
     elif isinstance(annotation, Polygon):
         return _transform_polygon(annotation, transformation_config, original_dims, new_dims)
-    elif hasattr(annotation, 'x_min') and hasattr(annotation, 'y_min') and hasattr(annotation, 'x_max') and hasattr(annotation, 'y_max'):
-        # Handle database.models.Annotation objects - decide based on label_mode
-        print(f"         🔧 Detected database annotation - label_mode: {label_mode}")
-        
-        # Check if we should use segmentation data for segmentation tasks
-        if label_mode == "yolo_segmentation" and hasattr(annotation, 'segmentation') and getattr(annotation, 'segmentation', None):
-            print(f"         🔧 Using segmentation data for segmentation task...")
-            
-            import json
-            seg_data = getattr(annotation, 'segmentation', None)
-            
-            # Parse JSON string if needed
-            if isinstance(seg_data, str):
-                try:
-                    seg_data = json.loads(seg_data)
-                except:
-                    print(f"         ⚠️  Failed to parse segmentation JSON - falling back to bbox")
-                    seg_data = None
-            
-            if seg_data:
-                # Extract points from segmentation data (same logic as releases.py)
-                points = []
-                if isinstance(seg_data, list) and len(seg_data) > 0:
-                    # 1) list of {x,y}
-                    if isinstance(seg_data[0], dict) and 'x' in seg_data[0] and 'y' in seg_data[0]:
-                        points = [(float(p['x']), float(p['y'])) for p in seg_data]
-                    # 2) [[x1,y1,x2,y2,...]]
-                    elif isinstance(seg_data[0], list):
-                        flat = seg_data[0]
-                        for i in range(0, len(flat) - 1, 2):
-                            points.append((float(flat[i]), float(flat[i + 1])))
-                    # 3) [x1,y1,x2,y2,...]
-                    elif isinstance(seg_data[0], (int, float)):
-                        for i in range(0, len(seg_data) - 1, 2):
-                            points.append((float(seg_data[i]), float(seg_data[i + 1])))
-                
-                if points:
-                    # Create a temporary Polygon object for transformation
-                    temp_polygon = Polygon(
-                        points=points,
-                        class_name=getattr(annotation, 'class_name', 'unknown'),
-                        class_id=getattr(annotation, 'class_id', 0)
-                    )
-                    
-                    print(f"         🔧 About to call _transform_polygon with {len(points)} points...")
-                    transformed_polygon = _transform_polygon(temp_polygon, transformation_config, original_dims, new_dims)
-                    print(f"         🔧 _transform_polygon returned: {transformed_polygon}")
-                    
-                    if transformed_polygon and hasattr(transformed_polygon, 'points'):
-                        # Convert transformed points back to the original segmentation format
-                        if isinstance(seg_data, list) and len(seg_data) > 0:
-                            if isinstance(seg_data[0], dict) and 'x' in seg_data[0]:
-                                # Format 1: list of {x,y}
-                                new_seg_data = [{'x': float(p[0]), 'y': float(p[1])} for p in transformed_polygon.points]
-                            elif isinstance(seg_data[0], list):
-                                # Format 2: [[x1,y1,x2,y2,...]]
-                                flat_points = []
-                                for p in transformed_polygon.points:
-                                    flat_points.extend([float(p[0]), float(p[1])])
-                                new_seg_data = [flat_points]
-                            else:
-                                # Format 3: [x1,y1,x2,y2,...]
-                                new_seg_data = []
-                                for p in transformed_polygon.points:
-                                    new_seg_data.extend([float(p[0]), float(p[1])])
-                        else:
-                            # Default to flat format
-                            new_seg_data = []
-                            for p in transformed_polygon.points:
-                                new_seg_data.extend([float(p[0]), float(p[1])])
-                        
-                        # Update the original annotation with transformed segmentation data
-                        annotation.segmentation = json.dumps(new_seg_data) if isinstance(getattr(annotation, 'segmentation', None), str) else new_seg_data
-                        
-                        # CRITICAL: Update bounding box coordinates based on transformed polygon
-                        if transformed_polygon.points:
-                            x_coords = [p[0] for p in transformed_polygon.points]
-                            y_coords = [p[1] for p in transformed_polygon.points]
-                            annotation.x_min = float(min(x_coords))
-                            annotation.y_min = float(min(y_coords))
-                            annotation.x_max = float(max(x_coords))
-                            annotation.y_max = float(max(y_coords))
-                            print(f"         📦 Updated bounding box: x_min={annotation.x_min}, y_min={annotation.y_min}, x_max={annotation.x_max}, y_max={annotation.y_max}")
-                        
-                        print(f"         📦 Updated annotation with {len(transformed_polygon.points)} transformed points")
-                        return annotation
-        
-        # Default: Use bounding box coordinates for object detection
-        print(f"         🔧 Using bounding box coordinates for detection task...")
-        
-        # Create a temporary BoundingBox object for transformation
-        temp_bbox = BoundingBox(
-            x_min=annotation.x_min,
-            y_min=annotation.y_min,
-            x_max=annotation.x_max,
-            y_max=annotation.y_max,
-            class_name=getattr(annotation, 'class_name', 'unknown'),
-            class_id=getattr(annotation, 'class_id', 0)
-        )
-        
-        print(f"         🔧 About to call _transform_bbox with temp bbox...")
-        transformed_bbox = _transform_bbox(temp_bbox, transformation_config, original_dims, new_dims)
-        print(f"         🔧 _transform_bbox returned: {transformed_bbox}")
-        
-        print(f"         🔧 CHECKING TRANSFORMED BBOX: {transformed_bbox}")
-        print(f"         🔧 TRANSFORMED BBOX TYPE: {type(transformed_bbox)}")
-        print(f"         🔧 TRANSFORMED BBOX BOOL: {bool(transformed_bbox)}")
-        if hasattr(transformed_bbox, 'x_min'):
-            print(f"         🔧 TRANSFORMED BBOX HAS COORDS: x_min={transformed_bbox.x_min}")
-        
-        if transformed_bbox:
-            # Update the original annotation with transformed coordinates
-            print(f"         🔧 BEFORE UPDATE: annotation.x_min={annotation.x_min}, annotation.y_min={annotation.y_min}")
-            print(f"         🔧 TRANSFORMED BBOX: x_min={transformed_bbox.x_min}, y_min={transformed_bbox.y_min}, x_max={transformed_bbox.x_max}, y_max={transformed_bbox.y_max}")
-            annotation.x_min = transformed_bbox.x_min
-            annotation.y_min = transformed_bbox.y_min
-            annotation.x_max = transformed_bbox.x_max
-            annotation.y_max = transformed_bbox.y_max
-            print(f"         🔧 AFTER UPDATE: annotation.x_min={annotation.x_min}, annotation.y_min={annotation.y_min}")
-            print(f"         📦 Updated annotation: x_min={annotation.x_min}, y_min={annotation.y_min}, x_max={annotation.x_max}, y_max={annotation.y_max}")
-            return annotation
-        else:
-            print(f"         ⚠️  _transform_bbox returned falsy value - returning original annotation!")
-            return annotation
-    elif hasattr(annotation, 'segmentation') and getattr(annotation, 'segmentation', None):
-        # Handle database.models.Annotation objects that have polygon/segmentation data (for segmentation tasks)
-        print(f"         🔧 Detected database annotation with segmentation data - transforming...")
-        
-        import json
-        seg_data = getattr(annotation, 'segmentation', None)
-        
-        # Parse JSON string if needed
-        if isinstance(seg_data, str):
-            try:
-                seg_data = json.loads(seg_data)
-            except:
-                print(f"         ⚠️  Failed to parse segmentation JSON - returning unchanged")
-                return annotation
-        
-        # Extract points from segmentation data (same logic as releases.py)
-        points = []
-        if isinstance(seg_data, list) and len(seg_data) > 0:
-            # 1) list of {x,y}
-            if isinstance(seg_data[0], dict) and 'x' in seg_data[0] and 'y' in seg_data[0]:
-                points = [(float(p['x']), float(p['y'])) for p in seg_data]
-            # 2) [[x1,y1,x2,y2,...]]
-            elif isinstance(seg_data[0], list):
-                flat = seg_data[0]
-                for i in range(0, len(flat) - 1, 2):
-                    points.append((float(flat[i]), float(flat[i + 1])))
-            # 3) [x1,y1,x2,y2,...]
-            elif isinstance(seg_data[0], (int, float)):
-                for i in range(0, len(seg_data) - 1, 2):
-                    points.append((float(seg_data[i]), float(seg_data[i + 1])))
-        
-        if not points:
-            print(f"         ⚠️  No valid points found in segmentation data - returning unchanged")
-            return annotation
-            
-        # Create a temporary Polygon object for transformation
-        temp_polygon = Polygon(
-            points=points,
-            class_name=getattr(annotation, 'class_name', 'unknown'),
-            class_id=getattr(annotation, 'class_id', 0)
-        )
-        
-        print(f"         🔧 About to call _transform_polygon with {len(points)} points...")
-        transformed_polygon = _transform_polygon(temp_polygon, transformation_config, original_dims, new_dims)
-        print(f"         🔧 _transform_polygon returned: {transformed_polygon}")
-        
-        if transformed_polygon and hasattr(transformed_polygon, 'points'):
-            # Convert transformed points back to the original segmentation format
-            if isinstance(seg_data, list) and len(seg_data) > 0:
-                if isinstance(seg_data[0], dict) and 'x' in seg_data[0]:
-                    # Format 1: list of {x,y}
-                    new_seg_data = [{'x': float(p[0]), 'y': float(p[1])} for p in transformed_polygon.points]
-                elif isinstance(seg_data[0], list):
-                    # Format 2: [[x1,y1,x2,y2,...]]
-                    flat_points = []
-                    for p in transformed_polygon.points:
-                        flat_points.extend([float(p[0]), float(p[1])])
-                    new_seg_data = [flat_points]
-                else:
-                    # Format 3: [x1,y1,x2,y2,...]
-                    new_seg_data = []
-                    for p in transformed_polygon.points:
-                        new_seg_data.extend([float(p[0]), float(p[1])])
-            else:
-                # Default to flat format
-                new_seg_data = []
-                for p in transformed_polygon.points:
-                    new_seg_data.extend([float(p[0]), float(p[1])])
-            
-            # Update the original annotation with transformed segmentation data
-            annotation.segmentation = json.dumps(new_seg_data) if isinstance(getattr(annotation, 'segmentation', None), str) else new_seg_data
-            
-            # CRITICAL: Update bounding box coordinates based on transformed polygon
-            if transformed_polygon.points:
-                x_coords = [p[0] for p in transformed_polygon.points]
-                y_coords = [p[1] for p in transformed_polygon.points]
-                annotation.x_min = float(min(x_coords))
-                annotation.y_min = float(min(y_coords))
-                annotation.x_max = float(max(x_coords))
-                annotation.y_max = float(max(y_coords))
-                print(f"         📦 Updated bounding box: x_min={annotation.x_min}, y_min={annotation.y_min}, x_max={annotation.x_max}, y_max={annotation.y_max}")
-            
-            print(f"         📦 Updated annotation with {len(transformed_polygon.points)} transformed points")
-            return annotation
-        else:
-            print(f"         ⚠️  _transform_polygon returned None - returning original annotation!")
-            return annotation
     else:
-        print(f"         ⚠️  Unknown annotation type - returning unchanged")
         return annotation
 
 
@@ -729,32 +471,11 @@ def _transform_bbox(bbox: BoundingBox, transformation_config: Dict[str, Any],
                     debug_info: Optional[Dict] = None) -> Optional[BoundingBox]:
     """Transform bbox coordinates using sequential transforms with optional debug tracking."""
 
-    print(f"\n🚀 STARTING BBOX TRANSFORMATION")
-    print(f"=" * 80)
-    print(f"📦 INPUT BBOX:")
-    print(f"   class_name: {getattr(bbox, 'class_name', 'unknown')}")
-    print(f"   class_id: {getattr(bbox, 'class_id', 'unknown')}")
-    print(f"   x_min: {bbox.x_min}, y_min: {bbox.y_min}")
-    print(f"   x_max: {bbox.x_max}, y_max: {bbox.y_max}")
-    print(f"   width: {bbox.x_max - bbox.x_min}, height: {bbox.y_max - bbox.y_min}")
-    print(f"📐 DIMENSIONS:")
-    print(f"   original_dims: {original_dims}")
-    print(f"   new_dims: {new_dims}")
-    print(f"🔧 TRANSFORMATION CONFIG:")
-    for i, (transform_name, params) in enumerate(transformation_config.items()):
-        print(f"   {i+1}. {transform_name}: {params}")
-    print(f"=" * 80)
-
     x_min, y_min, x_max, y_max = bbox.x_min, bbox.y_min, bbox.x_max, bbox.y_max
     orig_width, orig_height = original_dims
     new_width, new_height = new_dims
 
     current_width, current_height = orig_width, orig_height
-    
-    print(f"🔢 INITIAL VALUES:")
-    print(f"   x_min: {x_min}, y_min: {y_min}")
-    print(f"   x_max: {x_max}, y_max: {y_max}")
-    print(f"   current_width: {current_width}, current_height: {current_height}")
     
     # Updated coordinate_transforms to match transformation_config.py
     # GEOMETRY TOOLS (affect coordinates): resize, rotation, flip, crop, random_zoom, affine_transform, perspective_warp, shear
@@ -786,141 +507,59 @@ def _transform_bbox(bbox: BoundingBox, transformation_config: Dict[str, Any],
                 target_height = params.get('height', 640)
                 resize_mode   = params.get('resize_mode', 'stretch_to')
 
-                print(f"\n🔍 RESIZE TRANSFORMATION DEBUG")
-                print(f"=" * 60)
-                print(f"📊 INPUT PARAMETERS:")
-                print(f"   target_width: {target_width}")
-                print(f"   target_height: {target_height}")
-                print(f"   resize_mode: {resize_mode}")
-                print(f"   current_width: {current_width}")
-                print(f"   current_height: {current_height}")
-                print(f"📍 ORIGINAL BBOX (before resize):")
-                print(f"   x_min: {x_min}, y_min: {y_min}")
-                print(f"   x_max: {x_max}, y_max: {y_max}")
-                print(f"   width: {x_max - x_min}, height: {y_max - y_min}")
-
                 source_w = float(current_width)
                 source_h = float(current_height)
                 tw = float(target_width)
                 th = float(target_height)
 
-                print(f"🔢 FLOAT CONVERSIONS:")
-                print(f"   source_w: {source_w}, source_h: {source_h}")
-                print(f"   tw: {tw}, th: {th}")
-
                 if resize_mode == 'stretch_to':
-                    print(f"🎯 STRETCH_TO MODE:")
                     # non-uniform scale
                     sx = tw / source_w
                     sy = th / source_h
-                    print(f"   sx = {tw} / {source_w} = {sx}")
-                    print(f"   sy = {th} / {source_h} = {sy}")
-                    print(f"📍 BEFORE SCALING:")
-                    print(f"   x_min: {x_min}, x_max: {x_max}")
-                    print(f"   y_min: {y_min}, y_max: {y_max}")
                     x_min *= sx; x_max *= sx
                     y_min *= sy; y_max *= sy
-                    print(f"📍 AFTER SCALING:")
-                    print(f"   x_min: {x_min}, x_max: {x_max}")
-                    print(f"   y_min: {y_min}, y_max: {y_max}")
                     canvas_width, canvas_height = tw, th
-                    print(f"🖼️ CANVAS SIZE: {canvas_width} x {canvas_height}")
 
                 elif resize_mode == 'fit_within':
-                    print(f"🎯 FIT_WITHIN MODE:")
                     # uniform scale, no padding, canvas shrinks
                     s = min(tw / source_w, th / source_h)
-                    print(f"   s = min({tw}/{source_w}, {th}/{source_h}) = min({tw/source_w}, {th/source_h}) = {s}")
-                    print(f"📍 BEFORE SCALING:")
-                    print(f"   x_min: {x_min}, x_max: {x_max}")
-                    print(f"   y_min: {y_min}, y_max: {y_max}")
                     x_min *= s; x_max *= s
                     y_min *= s; y_max *= s
-                    print(f"📍 AFTER SCALING:")
-                    print(f"   x_min: {x_min}, x_max: {x_max}")
-                    print(f"   y_min: {y_min}, y_max: {y_max}")
                     canvas_width  = source_w * s
                     canvas_height = source_h * s
-                    print(f"🖼️ CANVAS SIZE: {canvas_width} x {canvas_height}")
 
                 elif resize_mode in ['fit_reflect_edges', 'fit_black_edges', 'fit_white_edges']:
-                    print(f"🎯 {resize_mode.upper()} MODE:")
                     # uniform scale + letterbox padding (positive offsets)
                     s  = min(tw / source_w, th / source_h)
                     sw = source_w * s
                     sh = source_h * s
                     pad_x = int(round((tw - sw) / 2.0))  # match image renderer rounding
                     pad_y = int(round((th - sh) / 2.0))
-                    print(f"   s = min({tw}/{source_w}, {th}/{source_h}) = {s}")
-                    print(f"   sw = {source_w} * {s} = {sw}")
-                    print(f"   sh = {source_h} * {s} = {sh}")
-                    print(f"   pad_x = int(round(({tw} - {sw}) / 2.0)) = {pad_x}")
-                    print(f"   pad_y = int(round(({th} - {sh}) / 2.0)) = {pad_y}")
-                    print(f"📍 BEFORE TRANSFORM:")
-                    print(f"   x_min: {x_min}, x_max: {x_max}")
-                    print(f"   y_min: {y_min}, y_max: {y_max}")
                     x_min = x_min * s + pad_x; x_max = x_max * s + pad_x
                     y_min = y_min * s + pad_y; y_max = y_max * s + pad_y
-                    print(f"📍 AFTER TRANSFORM:")
-                    print(f"   x_min: {x_min}, x_max: {x_max}")
-                    print(f"   y_min: {y_min}, y_max: {y_max}")
                     canvas_width, canvas_height = tw, th
-                    print(f"🖼️ CANVAS SIZE: {canvas_width} x {canvas_height}")
 
                 elif resize_mode == 'fill_center_crop':
-                    print(f"🎯 FILL_CENTER_CROP MODE:")
-                    # Scale to fill target size, then apply center crop offset
-                    s = max(tw / source_w, th / source_h)
-                    scaled_w = source_w * s
-                    scaled_h = source_h * s
-                    
-                    # Calculate crop offsets (how much to crop from each side)
-                    crop_left = (scaled_w - tw) / 2.0
-                    crop_top = (scaled_h - th) / 2.0
-                    
-                    print(f"   s = max({tw}/{source_w}, {th}/{source_h}) = {s}")
-                    print(f"   scaled_w = {source_w} * {s} = {scaled_w}")
-                    print(f"   scaled_h = {source_h} * {s} = {scaled_h}")
-                    print(f"   crop_left = ({scaled_w} - {tw}) / 2.0 = {crop_left}")
-                    print(f"   crop_top = ({scaled_h} - {th}) / 2.0 = {crop_top}")
-                    print(f"📍 BEFORE TRANSFORM:")
-                    print(f"   x_min: {x_min}, x_max: {x_max}")
-                    print(f"   y_min: {y_min}, y_max: {y_max}")
-                    
-                    # First scale, then subtract crop offset (shift coordinates left/up by crop amount)
-                    x_min = x_min * s - crop_left
-                    x_max = x_max * s - crop_left
-                    y_min = y_min * s - crop_top
-                    y_max = y_max * s - crop_top
-                    
-                    print(f"📍 AFTER TRANSFORM:")
-                    print(f"   x_min: {x_min}, x_max: {x_max}")
-                    print(f"   y_min: {y_min}, y_max: {y_max}")
+                    # uniform scale + crop (offsets can be negative)
+                    s  = max(tw / source_w, th / source_h)
+                    sw = source_w * s
+                    sh = source_h * s
+                    ox = (tw - sw) / 2.0
+                    oy = (th - sh) / 2.0
+                    x_min = x_min * s + ox; x_max = x_max * s + ox
+                    y_min = y_min * s + oy; y_max = y_max * s + oy
                     canvas_width, canvas_height = tw, th
-                    print(f"🖼️ CANVAS SIZE: {canvas_width} x {canvas_height}")
 
                 else:
-                    print(f"🎯 DEFAULT MODE (fallback to stretch_to):")
                     # default: behave like stretch_to
                     sx = tw / source_w
                     sy = th / source_h
-                    print(f"   sx = {tw} / {source_w} = {sx}")
-                    print(f"   sy = {th} / {source_h} = {sy}")
-                    print(f"📍 BEFORE SCALING:")
-                    print(f"   x_min: {x_min}, x_max: {x_max}")
-                    print(f"   y_min: {y_min}, y_max: {y_max}")
                     x_min *= sx; x_max *= sx
                     y_min *= sy; y_max *= sy
-                    print(f"📍 AFTER SCALING:")
-                    print(f"   x_min: {x_min}, x_max: {x_max}")
-                    print(f"   y_min: {y_min}, y_max: {y_max}")
                     canvas_width, canvas_height = tw, th
-                    print(f"🖼️ CANVAS SIZE: {canvas_width} x {canvas_height}")
 
                 # make the new canvas available to any next transform
                 current_width, current_height = canvas_width, canvas_height
-                print(f"✅ RESIZE COMPLETE - NEW CANVAS: {current_width} x {current_height}")
-                print(f"=" * 60)
 
             
             elif transform_name in ('rotation', 'rotate'):
@@ -1081,23 +720,13 @@ def _transform_bbox(bbox: BoundingBox, transformation_config: Dict[str, Any],
                 
                 step_counter += 1
 
-    print(f"\n🔧 FINAL CLIPPING AND VALIDATION:")
-    print(f"   Before clipping: x_min={x_min}, y_min={y_min}, x_max={x_max}, y_max={y_max}")
-    print(f"   Canvas bounds: width={final_dims[0]}, height={final_dims[1]}")
-    print(f"   Note: Using final_dims instead of current_width/height for clipping")
-    
-    # clip to the REAL final canvas dimensions
-    final_width, final_height = final_dims
-    x_min = _clip(x_min, 0.0, final_width)
-    x_max = _clip(x_max, 0.0, final_width)
-    y_min = _clip(y_min, 0.0, final_height)
-    y_max = _clip(y_max, 0.0, final_height)
-    
-    print(f"   After clipping: x_min={x_min}, y_min={y_min}, x_max={x_max}, y_max={y_max}")
+    # clip to the REAL final canvas, not new_dims
+    x_min = _clip(x_min, 0.0, current_width)
+    x_max = _clip(x_max, 0.0, current_width)
+    y_min = _clip(y_min, 0.0, current_height)
+    y_max = _clip(y_max, 0.0, current_height)
 
     if x_min >= x_max or y_min >= y_max:
-        print(f"❌ INVALID BBOX: x_min >= x_max or y_min >= y_max")
-        print(f"   x_min={x_min}, x_max={x_max}, y_min={y_min}, y_max={y_max}")
         logger.warning("errors.validation", "Invalid bounding box after transformation, skipping", "invalid_bbox_skipped", {
             'bbox_coords': (x_min, y_min, x_max, y_max),
             'original_dims': original_dims,
@@ -1107,16 +736,6 @@ def _transform_bbox(bbox: BoundingBox, transformation_config: Dict[str, Any],
 
     # Create new BoundingBox with transformed coordinates
     transformed_bbox = BoundingBox(x_min, y_min, x_max, y_max, bbox.class_name, bbox.class_id, bbox.confidence)
-    
-    print(f"\n✅ TRANSFORMATION COMPLETE!")
-    print(f"📦 FINAL BBOX:")
-    print(f"   class_name: {transformed_bbox.class_name}")
-    print(f"   class_id: {transformed_bbox.class_id}")
-    print(f"   x_min: {transformed_bbox.x_min}, y_min: {transformed_bbox.y_min}")
-    print(f"   x_max: {transformed_bbox.x_max}, y_max: {transformed_bbox.y_max}")
-    print(f"   width: {transformed_bbox.x_max - transformed_bbox.x_min}")
-    print(f"   height: {transformed_bbox.y_max - transformed_bbox.y_min}")
-    print(f"=" * 80)
     
     # 🎯 CRITICAL FIX: Preserve segmentation data if it exists
     if hasattr(bbox, 'segmentation') and bbox.segmentation:
@@ -1200,14 +819,14 @@ def _transform_segmentation_points(segmentation_data, transformation_config: Dic
                     temp_w, temp_h = tw, th
 
                 elif mode == 'fill_center_crop':
-                    # Scale to fill, then apply center crop offset
-                    s = max(tw / temp_w, th / temp_h)
-                    scaled_w = temp_w * s
-                    scaled_h = temp_h * s
-                    crop_left = (scaled_w - tw) / 2.0
-                    crop_top = (scaled_h - th) / 2.0
-                    x = x * s - crop_left
-                    y = y * s - crop_top
+                    # uniform scale + crop (offsets can be negative)
+                    s  = max(tw / temp_w, th / temp_h)
+                    sw = temp_w * s
+                    sh = temp_h * s
+                    ox = (tw - sw) / 2.0
+                    oy = (th - sh) / 2.0
+                    x = x * s + ox
+                    y = y * s + oy
                     temp_w, temp_h = tw, th
 
                 else:
@@ -1353,12 +972,12 @@ def _transform_polygon(polygon: Polygon, transformation_config: Dict[str, Any],
                     canvas_width, canvas_height = tw, th
 
                 elif resize_mode == 'fill_center_crop':
-                    s = max(tw / source_w, th / source_h)
-                    scaled_w = source_w * s
-                    scaled_h = source_h * s
-                    crop_left = (scaled_w - tw) / 2.0
-                    crop_top = (scaled_h - th) / 2.0
-                    points = [(x * s - crop_left, y * s - crop_top) for (x, y) in points]
+                    s  = max(tw / source_w, th / source_h)
+                    sw = source_w * s
+                    sh = source_h * s
+                    ox = (tw - sw) / 2.0
+                    oy = (th - sh) / 2.0
+                    points = [(x * s + ox, y * s + oy) for (x, y) in points]
                     canvas_width, canvas_height = tw, th
 
                 else:
@@ -1553,10 +1172,9 @@ def _debug_yolo_dump(image_name, anns, final_w, final_h, transform_config=None, 
         print("🔧 APPLYING TRANSFORMATIONS TO ANNOTATIONS...")
         transformed_anns = update_annotations_for_transformations(
             annotations=anns,
-            transformation_config=transform_config,
-            original_dims=(original_w, original_h),
-            new_dims=(final_w, final_h),
-            label_mode="yolo_detection"  # Debug function defaults to detection mode
+            transform_config=transform_config,
+            original_img_w=original_w,
+            original_img_h=original_h
         )
         print(f"   Original annotations: {len(anns)}")
         print(f"   Transformed annotations: {len(transformed_anns)}")
@@ -1603,8 +1221,7 @@ def transform_detection_annotations_to_yolo(
     img_h: int,
     transform_config: Optional[Dict] = None,
     original_dims: Optional[Tuple[int, int]] = None,
-    class_index_resolver=None,
-    label_mode: str = "yolo_detection"
+    class_index_resolver=None
 ) -> List[str]:
     """
     Transform detection annotations and convert to YOLO format:
@@ -1641,28 +1258,13 @@ def transform_detection_annotations_to_yolo(
     working_annotations = annotations
     if transform_config and original_dims:
         print(f"🔧 TRANSFORMING ANNOTATIONS: {original_dims} → {img_w}x{img_h}")
-        print(f"🔧 TRANSFORM CONFIG: {transform_config}")
-        
-        # DEBUG: Print original annotations before transformation
-        print(f"📦 ORIGINAL ANNOTATIONS ({len(annotations)}):")
-        for i, ann in enumerate(annotations):
-            if hasattr(ann, 'x_min'):
-                print(f"   {i+1}. {ann.class_name}: x_min={ann.x_min}, y_min={ann.y_min}, x_max={ann.x_max}, y_max={ann.y_max}")
-            
         working_annotations = update_annotations_for_transformations(
             annotations=annotations,
             transformation_config=transform_config,
             original_dims=original_dims,
-            new_dims=(img_w, img_h),
-            label_mode=label_mode
+            new_dims=(img_w, img_h)
         )
         print(f"   Original: {len(annotations)} → Transformed: {len(working_annotations)}")
-        
-        # DEBUG: Print transformed annotations after transformation
-        print(f"📦 TRANSFORMED ANNOTATIONS ({len(working_annotations)}):")
-        for i, ann in enumerate(working_annotations):
-            if hasattr(ann, 'x_min'):
-                print(f"   {i+1}. {ann.class_name}: x_min={ann.x_min}, y_min={ann.y_min}, x_max={ann.x_max}, y_max={ann.y_max}")
     else:
         print(f"⚠️  NO TRANSFORMATION - using raw annotations")
 
@@ -1729,8 +1331,7 @@ def transform_segmentation_annotations_to_yolo(
     img_h: int,
     transform_config: Optional[Dict] = None,
     original_dims: Optional[Tuple[int, int]] = None,
-    class_index_resolver=None,
-    label_mode: str = "yolo_segmentation"
+    class_index_resolver=None
 ) -> List[str]:
     """
     Transform segmentation annotations and convert to YOLO polygon format:
@@ -1774,8 +1375,7 @@ def transform_segmentation_annotations_to_yolo(
             annotations=annotations,
             transformation_config=transform_config,
             original_dims=original_dims,
-            new_dims=(img_w, img_h),
-            label_mode=label_mode
+            new_dims=(img_w, img_h)
         )
         print(f"   Original: {len(annotations)} → Transformed: {len(working_annotations)}")
     else:
